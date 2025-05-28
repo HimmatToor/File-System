@@ -104,12 +104,100 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
-	/* TODO: Phase 2 */
+	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		block_disk_close();
+		return -1;
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			int match = 1;
+			
+			for (int j = 0; j < strlen(filename); j++){
+				if (buf[index + j] != filename[j]){
+					match = 0;
+					break;
+				}
+			}
+
+			if (match && buf[index + strlen(filename)] == '\0'){
+				return -1; // File already exists
+			}
+		}
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] == '\0'){
+			int index = i*32;
+			for (int j = 0; j < strlen(filename); j++){
+				buf[index + j] = filename[j];
+			}
+			buf[index + strlen(filename)] = '\0';
+
+			buf[index + 16] = 0;
+			buf[index + 17] = 0;
+			buf[index + 18] = 0;
+			buf[index + 19] = 0;
+
+			buf[index + 20] = 0xFF;
+			buf[index + 21] = 0xFF;
+
+			return block_write(infoSuperblock.rdir_blk, buf);
+		}
+	}
+
+	return -1; // Root directory already contains max number of files.
 }
 
 int fs_delete(const char *filename)
 {
-	/* TODO: Phase 2 */
+	// Need to come back for the condition when file is open.
+
+	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		block_disk_close();
+		return -1;
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			int match = 1;
+			
+			for (int j = 0; j < strlen(filename); j++){
+				if (buf[index + j] != filename[j]){
+					match = 0;
+					break;
+				}
+			}
+
+			if (match && buf[index + strlen(filename)] == '\0'){
+				buf[index] = '\0';
+
+				buf[index + 16] = NULL;
+				buf[index + 17] = NULL;
+				buf[index + 18] = NULL;
+				buf[index + 19] = NULL;
+
+				buf[index + 20] = NULL;
+				buf[index + 21] = NULL;
+
+				return block_write(infoSuperblock.rdir_blk, buf);
+			}
+		}
+	}
+
+	return -1; // No file with that name
 }
 
 int fs_ls(void)
