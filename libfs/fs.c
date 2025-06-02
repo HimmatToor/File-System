@@ -17,7 +17,15 @@ struct superblock{
 	u_int8_t padding[4079];
 };
 
+struct file_descriptor{
+	int used;
+	size_t offset;
+	int rootIndex;
+};
+
 static struct superblock infoSuperblock;
+
+static struct file_descriptor fds[FS_OPEN_MAX_COUNT];
 
 int fs_mount(const char *diskname)
 {
@@ -40,6 +48,12 @@ int fs_mount(const char *diskname)
 	if (infoSuperblock.total_blk_count != block_disk_count()){
 		block_disk_close();
 		return -1;
+	}
+
+	for (int i = 0; i < FS_OPEN_MAX_COUNT; i ++){
+		fds[i].used = 0;
+		fds[i].offset = 0;
+		fds[i].rootIndex = 0;
 	}
 
 	return 0;
@@ -104,37 +118,184 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
-	/* TODO: Phase 2 */
+	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		block_disk_close();
+		return -1;
+	}
+
+	// Check to see that file does not already exist.
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			int match = 1;
+			
+			for (size_t j = 0; j < strlen(filename); j++){
+				if (buf[index + j] != filename[j]){
+					match = 0;
+					break;
+				}
+			}
+
+			if (match && buf[index + strlen(filename)] == '\0'){
+				return -1; 
+			}
+		}
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] == '\0'){
+			int index = i*32;
+			for (size_t j = 0; j < strlen(filename); j++){
+				buf[index + j] = filename[j];
+			}
+			buf[index + strlen(filename)] = '\0';
+
+			buf[index + 16] = 0;
+			buf[index + 17] = 0;
+			buf[index + 18] = 0;
+			buf[index + 19] = 0;
+
+			buf[index + 20] = 0xFF;
+			buf[index + 21] = 0xFF;
+
+			return block_write(infoSuperblock.rdir_blk, buf);
+		}
+	}
+
+	return -1; // Root directory already contains max number of files.
 }
 
 int fs_delete(const char *filename)
 {
-	/* TODO: Phase 2 */
+	// Need to come back for the condition when file is open.
+
+	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+
+	// Need to free file descriptors as well
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		block_disk_close();
+		return -1;
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			int match = 1;
+			
+			for (size_t j = 0; j < strlen(filename); j++){
+				if (buf[index + j] != filename[j]){
+					match = 0;
+					break;
+				}
+			}
+
+			if (match && buf[index + strlen(filename)] == '\0'){
+				buf[index] = '\0';
+
+				for (int j = 16; j < 32; j++){
+					buf[index + j] = 0;
+				}
+
+				return block_write(infoSuperblock.rdir_blk, buf);
+			}
+		}
+	}
+
+	return -1; // No file with that name
 }
 
 int fs_ls(void)
 {
-	/* TODO: Phase 2 */
+	// Just need to figure out what the output is supposed to look like.
 }
 
 int fs_open(const char *filename)
 {
-	/* TODO: Phase 3 */
+	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		return -1;
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			int match = 1;
+			
+			for (size_t j = 0; j < strlen(filename); j++){
+				if (buf[index + j] != filename[j]){
+					match = 0;
+					break;
+				}
+			}
+
+			if (match && buf[index + strlen(filename)] == '\0'){
+				for (int j = 0; j < FS_OPEN_MAX_COUNT; j++){
+					if (fds[j].used == 0){
+						fds[j].used = 1;
+						fds[j].offset = 0;
+						fds[j].rootIndex = index;
+						return j;
+					}
+				}
+				return -1; // All file descriptors are used;
+			}
+		}
+	}
+
+	return -1; // File name not found.
 }
 
 int fs_close(int fd)
 {
-	/* TODO: Phase 3 */
+	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
+		return -1;
+	}
+
+	fds[fd].used = 0;
+	fds[fd].offset = 0;
+	fds[fd].rootIndex = 0;
+
+	return 0;
+
 }
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
+	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
+		return -1;
+	}
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		return -1;
+	}
+
+	u_int32_t size;
+	memcpy(&size, &buf[fds[fd].rootIndex + 16], sizeof(u_int32_t));
+	return size;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
-	/* TODO: Phase 3 */
+	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0 || (int)offset > fs_stat(fd)){
+		return -1;
+	}
+
+	fds->offset = offset;
+	return 0;
 }
 
 int fs_write(int fd, void *buf, size_t count)
