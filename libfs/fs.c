@@ -222,6 +222,7 @@ int fs_delete(const char *filename)
 
 int fs_ls(void)
 {
+	return -1;
 	// Just need to figure out what the output is supposed to look like.
 }
 
