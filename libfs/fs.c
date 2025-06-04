@@ -125,7 +125,7 @@ int fs_info(void)
 
 int fs_create(const char *filename)
 {
-	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+	if (!fs_mounted || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
 	}
 
@@ -181,7 +181,7 @@ int fs_delete(const char *filename)
 {
 	// Need to come back for the condition when file is open.
 
-	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+	if (!fs_mounted || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
 	}
 
@@ -222,13 +222,43 @@ int fs_delete(const char *filename)
 
 int fs_ls(void)
 {
-	return -1;
-	// Just need to figure out what the output is supposed to look like.
+	if (!fs_mounted){
+		return -1;
+	}
+
+	printf("FS Ls:\n");
+
+	char buf[4096];
+	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
+		block_disk_close();
+		return -1;
+	}
+
+	for (int i = 0; i < 128; i++){
+		if (buf[i*32] != '\0'){
+			int index = i*32;
+			printf("file: ");
+			for (int j = 0; j < 16; j++){
+				if (buf[j] == '\0'){
+					break;
+				}
+				printf("%s", buf[j]);
+			}
+			u_int32_t size;
+			memcpy(&size, &buf[index + 16], sizeof(u_int32_t));
+			printf(", size: %d", size);
+			u_int32_t data_blk;
+			memcpy(&data_blk, &buf[index + 20], sizeof(u_int32_t));
+			printf(", data_blk: %d\n", data_blk);
+		}
+	}
+	
+	return 0;
 }
 
 int fs_open(const char *filename)
 {
-	if (block_disk_count() == -1 || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
+	if (!fs_mounted || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
 	}
 
@@ -268,7 +298,7 @@ int fs_open(const char *filename)
 
 int fs_close(int fd)
 {
-	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
+	if (!fs_mounted || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
 		return -1;
 	}
 
@@ -282,7 +312,7 @@ int fs_close(int fd)
 
 int fs_stat(int fd)
 {
-	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
+	if (!fs_mounted || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0){
 		return -1;
 	}
 
@@ -298,7 +328,7 @@ int fs_stat(int fd)
 
 int fs_lseek(int fd, size_t offset)
 {
-	if (block_disk_count() == -1 || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0 || (int)offset > fs_stat(fd)){
+	if (!fs_mounted || fd < 0 || fd >= FS_OPEN_MAX_COUNT || fds[fd].used == 0 || (int)offset > fs_stat(fd)){
 		return -1;
 	}
 
