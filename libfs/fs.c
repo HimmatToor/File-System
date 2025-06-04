@@ -164,13 +164,13 @@ int fs_create(const char *filename)
 
 
 			// assign similarly as data blk
-			
+
 			buf[index + 16] = 0;
 			buf[index + 17] = 0;
 			buf[index + 18] = 0;
 			buf[index + 19] = 0;
 
-			u_int16_t data_blk = "0xFFFF";
+			u_int16_t data_blk = 0xFFFF;
 			memcpy(&buf[index + 20],&data_blk, sizeof(u_int16_t));
 
 			return block_write(infoSuperblock.rdir_blk, buf);
