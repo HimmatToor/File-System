@@ -162,13 +162,16 @@ int fs_create(const char *filename)
 			}
 			buf[index + strlen(filename)] = '\0';
 
+
+			// assign similarly as data blk
+			
 			buf[index + 16] = 0;
 			buf[index + 17] = 0;
 			buf[index + 18] = 0;
 			buf[index + 19] = 0;
 
-			buf[index + 20] = 0xFF;
-			buf[index + 21] = 0xFF;
+			u_int16_t data_blk = "0xFFFF";
+			memcpy(&buf[index + 20],&data_blk, sizeof(u_int16_t));
 
 			return block_write(infoSuperblock.rdir_blk, buf);
 		}
