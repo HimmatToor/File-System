@@ -230,7 +230,7 @@ int fs_ls(void)
 
 	char buf[4096];
 	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
-		block_disk_close();
+		block_disk_close(); 
 		return -1;
 	}
 
@@ -239,17 +239,17 @@ int fs_ls(void)
 			int index = i*32;
 			printf("file: ");
 			for (int j = 0; j < 16; j++){
-				if (buf[j] == '\0'){
+				if (buf[index + j] == '\0'){
 					break;
 				}
-				printf("%s", buf[j]);
+				printf("%c", buf[index + j]);
 			}
 			u_int32_t size;
 			memcpy(&size, &buf[index + 16], sizeof(u_int32_t));
-			printf(", size: %d", size);
-			u_int32_t data_blk;
-			memcpy(&data_blk, &buf[index + 20], sizeof(u_int32_t));
-			printf(", data_blk: %d\n", data_blk);
+			printf(", size: %u", size);
+			u_int16_t data_blk;
+			memcpy(&data_blk, &buf[index + 20], sizeof(u_int16_t));
+			printf(", data_blk: %u\n", data_blk);
 		}
 	}
 	
