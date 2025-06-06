@@ -404,6 +404,10 @@ int fs_write(int fd, void *buf, size_t count)
         return -1;
 	}
 
+	if (count == 0) {
+		return 0;
+	}
+
     struct file_descriptor *fd_entry = &fds[fd];
 
     // Load root directory block
@@ -472,8 +476,9 @@ int fs_write(int fd, void *buf, size_t count)
 		}
 
         size_t to_write = BLOCK_SIZE - offset;
-        if (to_write > count - bytes_written)
+        if (to_write > count - bytes_written){
             to_write = count - bytes_written;
+		}
 
         memcpy(temp_block + offset, (uint8_t *)buf + bytes_written, to_write);
         block_write(infoSuperblock.data_blk + block, temp_block);
@@ -485,8 +490,9 @@ int fs_write(int fd, void *buf, size_t count)
             uint16_t next = get_next_block(block);
             if (next == 0xFFFF) {
                 next = allocate_block();
-                if (next == 0xFFFF)
+                if (next == 0xFFFF){
                     break;
+				}
 
                 set_fat_entry(block, next);
                 set_fat_entry(next, 0xFFFF);
@@ -509,6 +515,10 @@ int fs_read(int fd, void *buf, size_t count)
 {
     if (!fs_mounted || buf == NULL || fd < 0 || fd >= FS_OPEN_MAX_COUNT || !fds[fd].used) {
         return -1;
+	}
+
+	if (count == 0) {
+		return 0;
 	}
 
     struct file_descriptor *fd_entry = &fds[fd];
