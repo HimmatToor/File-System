@@ -30,6 +30,42 @@ static struct superblock infoSuperblock;
 
 static struct file_descriptor fds[FS_OPEN_MAX_COUNT];
 
+
+// Helper function, it gets the next block's index as the name suggests
+uint16_t get_next_block(uint16_t index) {
+    uint8_t fat_block[BLOCK_SIZE];
+
+    int fat_block_num = index / 2048;
+    int fat_offset = (index % 2048) * 2;
+
+    if (block_read(1 + fat_block_num, fat_block) == -1) {
+        return 0xFFFF; // Error, indicating EOF
+	}
+
+    uint16_t value;
+    memcpy(&value, &fat_block[fat_offset], sizeof(uint16_t));
+    return value;
+}
+
+// Helper function, it sets the FAT index with value(next FAT entry)
+void set_fat_entry(uint16_t index, uint16_t value) {
+    uint8_t fat_block[BLOCK_SIZE];
+
+    int fat_block_num = index / 2048;
+    int fat_offset = (index % 2048) * 2;
+
+    // Read the correct FAT block
+    if (block_read(1 + fat_block_num, fat_block) == -1) {
+        return;
+	}
+
+    // Update the FAT entry
+    memcpy(&fat_block[fat_offset], &value, sizeof(uint16_t));
+
+    // Write it back to disk
+    block_write(1 + fat_block_num, fat_block);
+}
+
 int fs_mount(const char *diskname)
 {
 	if (block_disk_open(diskname) == -1){
@@ -83,7 +119,6 @@ int fs_info(void)
 	for (int i = 0; i < infoSuperblock.fat_blk_count; i++){
 		char buf[4096];
 		if (block_read(i + 1, buf) == -1){
-			block_disk_close();
 			return -1;
 		}
 
@@ -102,7 +137,6 @@ int fs_info(void)
 	int freeRdir = 0;
 	char buf[4096];
 	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
-		block_disk_close();
 		return -1;
 	}
 	for (int i = 0; i < 128; i++){
@@ -131,7 +165,6 @@ int fs_create(const char *filename)
 
 	char buf[4096];
 	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
-		block_disk_close();
 		return -1;
 	}
 
@@ -162,9 +195,6 @@ int fs_create(const char *filename)
 			}
 			buf[index + strlen(filename)] = '\0';
 
-
-			// assign similarly as data blk
-
 			buf[index + 16] = 0;
 			buf[index + 17] = 0;
 			buf[index + 18] = 0;
@@ -182,17 +212,12 @@ int fs_create(const char *filename)
 
 int fs_delete(const char *filename)
 {
-	// Need to come back for the condition when file is open.
-
 	if (!fs_mounted || filename == NULL || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
 	}
 
-	// Need to free file descriptors as well
-
 	char buf[4096];
 	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
-		block_disk_close();
 		return -1;
 	}
 
@@ -209,6 +234,20 @@ int fs_delete(const char *filename)
 			}
 
 			if (match && buf[index + strlen(filename)] == '\0'){
+				for (int j = 0; j < 16; j++){
+					if(fds[j].rootIndex == index && fds[j].used == 1){
+						return -1; // File is open
+					}
+				}
+
+				u_int16_t current_blk;
+				memcpy(&current_blk, &buf[index + 20], sizeof(u_int16_t));
+				while (current_blk != 0xFFFF){
+					u_int16_t next_blk = get_next_block(current_blk);
+					set_fat_entry(current_blk, 0x0000); 
+					current_blk = next_blk;
+				}		
+
 				buf[index] = '\0';
 
 				for (int j = 16; j < 32; j++){
@@ -233,7 +272,6 @@ int fs_ls(void)
 
 	char buf[4096];
 	if (block_read(infoSuperblock.rdir_blk, buf) == -1){
-		block_disk_close(); 
 		return -1;
 	}
 
@@ -337,41 +375,6 @@ int fs_lseek(int fd, size_t offset)
 
 	fds->offset = offset;
 	return 0;
-}
-
-// Helper function, it gets the next block's index as the name suggests
-uint16_t get_next_block(uint16_t index) {
-    uint8_t fat_block[BLOCK_SIZE];
-
-    int fat_block_num = index / 2048;
-    int fat_offset = (index % 2048) * 2;
-
-    if (block_read(1 + fat_block_num, fat_block) == -1) {
-        return 0xFFFF; // Error, indicating EOF
-	}
-
-    uint16_t value;
-    memcpy(&value, &fat_block[fat_offset], sizeof(uint16_t));
-    return value;
-}
-
-// Helper function, it sets the FAT index with value(next FAT entry)
-void set_fat_entry(uint16_t index, uint16_t value) {
-    uint8_t fat_block[BLOCK_SIZE];
-
-    int fat_block_num = index / 2048;
-    int fat_offset = (index % 2048) * 2;
-
-    // Read the correct FAT block
-    if (block_read(1 + fat_block_num, fat_block) == -1) {
-        return;
-	}
-
-    // Update the FAT entry
-    memcpy(&fat_block[fat_offset], &value, sizeof(uint16_t));
-
-    // Write it back to disk
-    block_write(1 + fat_block_num, fat_block);
 }
 
 // Helper function, it allocates space for a block
